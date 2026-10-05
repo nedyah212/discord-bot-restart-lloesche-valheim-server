@@ -3,7 +3,7 @@
 Check on your Dockerized Valheim server and restart it from Discord, with a safety check so nobody gets kicked mid-session.
 
 ```
-/valheim status    ->  valheim: running (since 2026-10-04T18:16:20Z), players: 0, join code: 124490
+/valheim status    ->  valheim: running (since 2026-01-01T12:00:00Z), players: 0, join code: 123456
 /valheim restart   ->  restarts the container, but only if nobody is online
 ```
 
@@ -38,7 +38,7 @@ You can use `valheim.sh` by itself from a terminal or cron if you don't want a b
 The status HTTP endpoint in the lloesche image doesn't work reliably on crossplay servers (it times out and returns no player count). The server does log a line like this on every join and leave, so the script reads that instead:
 
 ```
-Player joined server "My Server" that has join code 124490, now 1 player(s)
+Player joined server "My Server" that has join code 123456, now 1 player(s)
 ```
 
 **This only supports servers that write those lines.** If you run without `-crossplay`, your log wording may differ. Check with:
