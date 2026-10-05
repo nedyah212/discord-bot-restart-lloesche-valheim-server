@@ -1,0 +1,16 @@
+[Unit]
+Description=Valheim Discord bot
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=nedyah
+Group=docker
+WorkingDirectory=/opt/valheim-bot
+EnvironmentFile=/etc/valheim-bot.env
+ExecStart=/opt/valheim-bot/venv/bin/python /opt/valheim-bot/valheim_bot.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
