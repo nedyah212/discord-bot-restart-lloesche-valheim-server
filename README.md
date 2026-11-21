@@ -1,9 +1,11 @@
 # Valheim Discord Control
 
-Check on your Dockerized Valheim server and restart it from Discord, with a safety check so nobody gets kicked mid-session.
+Check on your Dockerized Valheim server, start it, stop it, and restart it from Discord, with a safety check so nobody gets kicked mid-session.
 
 ```
 /valheim status    ->  valheim: running (since 2026-01-01T12:00:00Z), players: 0, join code: 123456
+/valheim start     ->  starts the container if it's stopped
+/valheim stop      ->  stops the container, but only if nobody is online
 /valheim restart   ->  restarts the container, but only if nobody is online
 ```
 
@@ -15,7 +17,7 @@ Built for the [`lloesche/valheim-server`](https://github.com/lloesche/valheim-se
 Discord  ->  bot (Python, discord.py)  ->  valheim.sh  ->  docker
 ```
 
-- `valheim.sh` does the real work. It reads the player count and join code from the container's logs and restarts the container.
+- `valheim.sh` does the real work. It reads the player count and join code from the container's logs, and starts, stops, and restarts the container.
 - `valheim_bot.py` registers the slash commands, runs the script, and posts the output back to Discord.
 - `valheim-bot.service` keeps the bot running under systemd and starts it on boot.
 
@@ -23,13 +25,13 @@ You can use `valheim.sh` by itself from a terminal or cron if you don't want a b
 
 ## Files and where they go
 
-| File in this repo | Install location on your server |
-|---|---|
-| `valheim.sh` | `/usr/local/bin/valheim.sh` |
-| `valheim_bot.py` | `/opt/valheim-bot/valheim_bot.py` |
-| (Python virtualenv, created in setup) | `/opt/valheim-bot/venv/` |
-| `valheim-bot.service` | `/etc/systemd/system/valheim-bot.service` |
-| `.env.example` (copy and fill in) | `/etc/valheim-bot.env` |
+| File in this repo                     | Install location on your server           |
+| ------------------------------------- | ----------------------------------------- |
+| `valheim.sh`                          | `/usr/local/bin/valheim.sh`               |
+| `valheim_bot.py`                      | `/opt/valheim-bot/valheim_bot.py`         |
+| (Python virtualenv, created in setup) | `/opt/valheim-bot/venv/`                  |
+| `valheim-bot.service`                 | `/etc/systemd/system/valheim-bot.service` |
+| `.env.example` (copy and fill in)     | `/etc/valheim-bot.env`                    |
 
 `README.md`, `LICENSE`, `.gitignore`, and `.env.example` stay in the repo and aren't installed.
 
@@ -43,7 +45,7 @@ Player joined server "My Server" that has join code 123456, now 1 player(s)
 
 **This only supports servers that write those lines.** If you run without `-crossplay`, your log wording may differ. Check with:
 
-```bash
+```
 docker logs valheim | grep "player(s)"
 ```
 
@@ -60,7 +62,7 @@ If you see `now N player(s)` lines, it will work.
 
 ### 1. Install the script
 
-```bash
+```
 sudo install -m 755 valheim.sh /usr/local/bin/valheim.sh
 VALHEIM_CONTAINER=valheim /usr/local/bin/valheim.sh status
 ```
@@ -78,7 +80,7 @@ If your container isn't named `valheim`, set `VALHEIM_CONTAINER` (see [Configura
 
 ### 3. Install the bot
 
-```bash
+```
 sudo mkdir -p /opt/valheim-bot
 sudo chown "$USER": /opt/valheim-bot
 cp valheim_bot.py /opt/valheim-bot/
@@ -88,7 +90,7 @@ python3 -m venv /opt/valheim-bot/venv
 
 ### 4. Add your secrets
 
-```bash
+```
 sudo install -m 600 /dev/null /etc/valheim-bot.env
 sudo nano /etc/valheim-bot.env
 ```
@@ -104,7 +106,7 @@ No quotes and no spaces around `=`. `DISCORD_GUILD_ID` is optional, but without 
 
 Edit `valheim-bot.service` and change `User=` to your username (that user must be in the `docker` group, check with `id`). Then:
 
-```bash
+```
 sudo cp valheim-bot.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now valheim-bot
@@ -117,48 +119,53 @@ In Discord, type `/valheim`. If the commands don't show up, reload Discord with 
 
 Access control is handled in Discord, not in the bot. Go to **Server Settings -> Integrations -> your bot** and set permissions per command:
 
-- Restrict `/valheim restart` to a role (for example "Valheim Admin") and leave `/valheim status` open to everyone.
+- Restrict `/valheim start`, `/valheim stop`, and `/valheim restart` to a role (for example "Valheim Admin") and leave `/valheim status` open to everyone.
 - Or limit the commands to a single channel.
 
-Anyone who is allowed to run `/valheim restart` can restart your server, but the script refuses while players are online. The bot never passes `--force`.
+Anyone who is allowed to run `/valheim stop` or `/valheim restart` can take your server down, but the script refuses while players are online. The bot never passes `--force`. `/valheim start` has no player check, since there's nobody to kick from a stopped server.
 
 ## Configuration
 
-| Variable | Where | Default | What it does |
-|---|---|---|---|
-| `VALHEIM_CONTAINER` | environment of `valheim.sh` | `valheim` | Name of your Docker container |
-| `VALHEIM_SCRIPT` | `/etc/valheim-bot.env` | `/usr/local/bin/valheim.sh` | Path to the script, if you installed it elsewhere |
-| `DISCORD_BOT_TOKEN` | `/etc/valheim-bot.env` | required | Your bot token |
-| `DISCORD_GUILD_ID` | `/etc/valheim-bot.env` | none | Your server ID, for instant command registration |
+| Variable            | Where                       | Default                     | What it does                                      |
+| ------------------- | --------------------------- | --------------------------- | ------------------------------------------------- |
+| `VALHEIM_CONTAINER` | environment of `valheim.sh` | `valheim`                   | Name of your Docker container                     |
+| `VALHEIM_SCRIPT`    | `/etc/valheim-bot.env`      | `/usr/local/bin/valheim.sh` | Path to the script, if you installed it elsewhere |
+| `DISCORD_BOT_TOKEN` | `/etc/valheim-bot.env`      | required                    | Your bot token                                    |
+| `DISCORD_GUILD_ID`  | `/etc/valheim-bot.env`      | none                        | Your server ID, for instant command registration  |
 
 To pass `VALHEIM_CONTAINER` to the bot, add `VALHEIM_CONTAINER=yourname` to `/etc/valheim-bot.env`.
 
 ## Script usage and exit codes
 
-```bash
+```
 valheim.sh status
+valheim.sh start
+valheim.sh stop
+valheim.sh stop --force       # skips the safety checks (terminal use only)
 valheim.sh restart
 valheim.sh restart --force    # skips the safety checks (terminal use only)
 ```
 
-| Code | Meaning |
-|---|---|
-| 0 | OK |
-| 1 | Container is stopped |
-| 2 | Usage or setup error (docker missing, container not found) |
-| 3 | Restart refused: players are online |
-| 4 | Restart refused: couldn't read the player count (for example, the server is still booting) |
+| Code | Meaning                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------- |
+| 0    | OK                                                                                                   |
+| 1    | Container is stopped (`status`), or `stop` was run on an already-stopped container                   |
+| 2    | Usage or setup error (docker missing, container not found)                                           |
+| 3    | Stop/restart refused: players are online                                                             |
+| 4    | Stop/restart refused: couldn't read the player count (for example, the server is still booting)      |
+| 5    | `start` refused: container is already running                                                        |
 
-## Is restarting safe?
+## Is stopping and restarting safe?
 
-With nobody online, yes. `docker restart` sends SIGTERM and waits for the container's stop timeout, and the lloesche image saves the world on shutdown. Set `stop_grace_period: 2m` in your compose file so Valheim has time to finish saving.
+With nobody online, yes. `docker stop` and `docker restart` send SIGTERM and wait for the container's stop timeout, and the lloesche image saves the world on shutdown. Set `stop_grace_period: 2m` in your compose file so Valheim has time to finish saving.
 
-Two small caveats:
+Caveats:
 
-- If someone connects in the few seconds between the check and the restart, they'll get dropped.
-- For a minute or two after a restart the server is loading, and `status` reports `players: unknown`.
+- If someone connects in the few seconds between the check and the stop or restart, they'll get dropped.
+- For a minute or two after a start or restart the server is loading, and `status` reports `players: unknown`. Stop and restart refuse during this time because the count can't be verified.
+- A container stopped with `/valheim stop` stays stopped, even across a host reboot with `restart: unless-stopped`, until someone runs `/valheim start`.
 
-The join code changes every time the container restarts, so share the new one after a restart.
+The join code changes every time the container starts, so share the new one after a start or restart.
 
 ## Troubleshooting
 
@@ -166,7 +173,7 @@ The join code changes every time the container restarts, so share the new one af
 
 **Commands don't appear.** Reload Discord (Ctrl+R). Without `DISCORD_GUILD_ID`, global commands can take up to an hour.
 
-**`players: unknown` on a server that's been up a while.** The log line wasn't found. Run `docker logs valheim | grep "player(s)"` and check the wording. If the logs rotated and lost the line, restart refuses on purpose, because it can't verify the server is empty.
+**`players: unknown` on a server that's been up a while.** The log line wasn't found. Run `docker logs valheim | grep "player(s)"` and check the wording. If the logs rotated and lost the line, stop and restart refuse on purpose, because they can't verify the server is empty.
 
 **Permission denied on docker.** The user in the service file isn't in the `docker` group. Fix with `sudo usermod -aG docker USERNAME`, then `sudo systemctl restart valheim-bot`.
 
